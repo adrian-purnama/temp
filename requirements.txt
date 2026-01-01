@@ -1,0 +1,16 @@
+# Core dependencies
+pandas>=1.5.0
+numpy>=1.20.0
+
+# Binance API client
+python-binance>=1.0.19
+
+# WebSocket support (usually included with python-binance, but listed for clarity)
+websocket-client>=1.4.0
+
+# Terminal dashboard
+rich>=13.0.0
+
+
+
+

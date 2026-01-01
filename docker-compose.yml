@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  live-trading-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: live-trading-bot
+    restart: unless-stopped
+    # Keep container running even if there's an error
+    # You can stop it manually with: docker stop live-trading-bot
+    volumes:
+      # Mount current directory to persist logs, CSV files, and backups
+      # This ensures all output files are accessible on the host
+      - .:/app
+      # Exclude virtual environment and cache from mount
+      - /app/trading-env
+      - /app/__pycache__
+      - /app/trader/__pycache__
+      - /app/trader/live/__pycache__
+      - /app/trader/backtesting/__pycache__
+      - /app/trader/signals/__pycache__
+    # Optional: Set timezone (adjust to your timezone)
+    environment:
+      - TZ=UTC
+    # Uncomment if you want to use environment variables for API keys
+    # environment:
+    #   - BINANCE_API_KEY=your_api_key_here
+    #   - BINANCE_API_SECRET=your_api_secret_here
+    #   - BINANCE_TESTNET=true
+    #   - TRADING_SYMBOL=BTCUSDT
+    #   - TRADING_TIMEFRAME=15m
+    stdin_open: true
+    tty: true
+
