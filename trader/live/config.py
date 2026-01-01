@@ -107,7 +107,7 @@ class LiveTradingConfig:
     position_backup_file: str = "positions_backup.json"  # File to backup positions
     
     # Dashboard Settings
-    enable_dashboard: bool = True  # Enable terminal dashboard
+    enable_dashboard: bool = False  # Enable terminal dashboard
     dashboard_refresh_rate: float = 0.1  # Dashboard refresh rate in seconds (real-time)
     
     # Order Settings
