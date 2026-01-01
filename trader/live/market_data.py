@@ -243,10 +243,10 @@ class MarketData:
                 verbose=False
             )
             # Configure websocket kwargs for ping/pong keepalive
+            # Note: close_timeout is already set by the library (0.1), so we don't include it
             manager.ws_kwargs = {
                 'ping_interval': self.ping_interval,
                 'ping_timeout': self.ping_timeout,
-                'close_timeout': self.close_timeout,
             }
             return manager
     
@@ -321,11 +321,11 @@ class MarketData:
                         break
                 
                 # Configure websocket kwargs if _bsm is available
+                # Note: close_timeout is already set by the library (0.1), so we don't include it
                 if hasattr(self.socket_manager, '_bsm') and self.socket_manager._bsm:
                     self.socket_manager._bsm.ws_kwargs = {
                         'ping_interval': self.ping_interval,
                         'ping_timeout': self.ping_timeout,
-                        'close_timeout': self.close_timeout,
                     }
             
             # Create kline stream
@@ -368,11 +368,11 @@ class MarketData:
                     time.sleep(2)
                     
                     # Configure underlying manager
+                    # Note: close_timeout is already set by the library (0.1), so we don't include it
                     if hasattr(self.socket_manager, '_bsm') and self.socket_manager._bsm:
                         self.socket_manager._bsm.ws_kwargs = {
                             'ping_interval': self.ping_interval,
                             'ping_timeout': self.ping_timeout,
-                            'close_timeout': self.close_timeout,
                         }
                     
                     self.socket_key = self.socket_manager.start_kline_socket(
