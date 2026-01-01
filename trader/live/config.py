@@ -96,6 +96,19 @@ class LiveTradingConfig:
     # WebSocket Settings
     websocket_reconnect_delay: int = 5  # Seconds to wait before reconnecting
     websocket_max_reconnect_attempts: int = 10  # Max reconnection attempts
+    websocket_ping_interval: float = 20.0  # Ping interval in seconds (websocket keepalive)
+    websocket_ping_timeout: float = 10.0  # Ping timeout in seconds (must be < ping_interval)
+    websocket_connection_timeout: float = 30.0  # Connection timeout in seconds
+    websocket_close_timeout: float = 10.0  # Close timeout in seconds
+    websocket_max_queue_size: int = 500  # Max queue size for incoming messages
+    
+    # Position Management
+    close_positions_on_start: bool = True  # Close all positions on startup
+    position_backup_file: str = "positions_backup.json"  # File to backup positions
+    
+    # Dashboard Settings
+    enable_dashboard: bool = True  # Enable terminal dashboard
+    dashboard_refresh_rate: float = 0.1  # Dashboard refresh rate in seconds (real-time)
     
     # Order Settings
     order_timeout_seconds: int = 30  # Timeout for order execution
@@ -154,6 +167,15 @@ class LiveTradingConfig:
             'trades_log_file': self.trades_log_file,
             'websocket_reconnect_delay': self.websocket_reconnect_delay,
             'websocket_max_reconnect_attempts': self.websocket_max_reconnect_attempts,
+            'websocket_ping_interval': self.websocket_ping_interval,
+            'websocket_ping_timeout': self.websocket_ping_timeout,
+            'websocket_connection_timeout': self.websocket_connection_timeout,
+            'websocket_close_timeout': self.websocket_close_timeout,
+            'websocket_max_queue_size': self.websocket_max_queue_size,
+            'close_positions_on_start': self.close_positions_on_start,
+            'position_backup_file': self.position_backup_file,
+            'enable_dashboard': self.enable_dashboard,
+            'dashboard_refresh_rate': self.dashboard_refresh_rate,
             'order_timeout_seconds': self.order_timeout_seconds,
             'order_retry_attempts': self.order_retry_attempts,
             'override_initial_balance': self.override_initial_balance
