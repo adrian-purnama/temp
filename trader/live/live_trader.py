@@ -456,11 +456,7 @@ class LiveTrader:
             
             # Calculate risk parameters
             risk_params = self._calculate_risk_parameters(
-                confirmed_setup, zone, base_entry_price, atr_value,
-                r_multiple=self.config.take_profit_r_multiple,
-                rebound_stop_atr_mult=self.config.rebound_stop_atr_mult,
-                breakout_stop_atr_mult=self.config.breakout_stop_atr_mult,
-                risk_manager=self.risk_manager
+                confirmed_setup, zone, base_entry_price, atr_value
             )
             
             # Calculate position size
