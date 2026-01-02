@@ -215,17 +215,49 @@ class BinanceClient:
             Order response from Binance
         """
         try:
+            # Get minimum requirements
+            min_notional = self.get_min_notional(symbol)
+            min_quantity = self.get_min_quantity(symbol)
+            current_price = self.get_current_price(symbol)
+            
             if side == "BUY" and quote_order_qty is not None:
+                # Validate minimum notional for BUY orders
+                if quote_order_qty < min_notional:
+                    logger.warning(f"Order value {quote_order_qty} below minimum notional {min_notional}. "
+                                 f"Increasing to minimum.")
+                    quote_order_qty = min_notional
+                
+                # Format quote order quantity (remove decimals for quote)
+                quote_order_qty_str = f"{quote_order_qty:.2f}".rstrip('0').rstrip('.')
+                
                 # Market buy using quote quantity
                 order = self.client.order_market_buy(
                     symbol=symbol,
-                    quoteOrderQty=quote_order_qty
+                    quoteOrderQty=quote_order_qty_str
                 )
             else:
+                # Validate minimum quantity and notional for SELL orders
+                if quantity < min_quantity:
+                    logger.warning(f"Quantity {quantity} below minimum {min_quantity}. "
+                                 f"Increasing to minimum.")
+                    quantity = min_quantity
+                
+                order_value = quantity * current_price
+                if order_value < min_notional:
+                    # Increase quantity to meet minimum notional
+                    required_quantity = min_notional / current_price
+                    # Round up to meet minimum quantity
+                    quantity = max(required_quantity, min_quantity)
+                    logger.warning(f"Order value {order_value} below minimum notional {min_notional}. "
+                                 f"Increasing quantity to {quantity}.")
+                
+                # Format quantity according to Binance precision requirements
+                quantity_str = self.format_quantity(symbol, quantity)
+                
                 # Market sell using base quantity
                 order = self.client.order_market_sell(
                     symbol=symbol,
-                    quantity=quantity
+                    quantity=quantity_str
                 )
             
             logger.info(f"Placed market {side} order: {order['orderId']} for {symbol}")
@@ -563,6 +595,136 @@ class BinanceClient:
         except BinanceAPIException as e:
             logger.error(f"Error getting symbol info: {e}")
             raise
+    
+    def get_min_notional(self, symbol: str) -> float:
+        """
+        Get minimum notional (order value) requirement for a symbol.
+        
+        Parameters
+        ----------
+        symbol : str
+            Trading pair symbol
+        
+        Returns
+        -------
+        float
+            Minimum notional value in quote asset (e.g., USDT)
+        """
+        try:
+            symbol_info = self.get_symbol_info(symbol)
+            filters = symbol_info.get('filters', [])
+            
+            for filter_item in filters:
+                if filter_item.get('filterType') == 'MIN_NOTIONAL':
+                    min_notional = float(filter_item.get('minNotional', 10.0))
+                    return min_notional
+                elif filter_item.get('filterType') == 'NOTIONAL':
+                    min_notional = float(filter_item.get('minNotional', 10.0))
+                    return min_notional
+            
+            # Default minimum notional for most pairs is 10 USDT
+            return 10.0
+        except Exception as e:
+            logger.warning(f"Error getting min notional for {symbol}: {e}. Using default 10.0")
+            return 10.0
+    
+    def get_min_quantity(self, symbol: str) -> float:
+        """
+        Get minimum quantity requirement for a symbol.
+        
+        Parameters
+        ----------
+        symbol : str
+            Trading pair symbol
+        
+        Returns
+        -------
+        float
+            Minimum quantity in base asset
+        """
+        try:
+            symbol_info = self.get_symbol_info(symbol)
+            filters = symbol_info.get('filters', [])
+            
+            for filter_item in filters:
+                if filter_item.get('filterType') == 'LOT_SIZE':
+                    min_qty = float(filter_item.get('minQty', 0.001))
+                    return min_qty
+            
+            return 0.001  # Default
+        except Exception as e:
+            logger.warning(f"Error getting min quantity for {symbol}: {e}. Using default 0.001")
+            return 0.001
+    
+    def get_step_size(self, symbol: str) -> float:
+        """
+        Get step size (quantity precision) for a symbol.
+        
+        Parameters
+        ----------
+        symbol : str
+            Trading pair symbol
+        
+        Returns
+        -------
+        float
+            Step size (e.g., 0.001 means quantities must be multiples of 0.001)
+        """
+        try:
+            symbol_info = self.get_symbol_info(symbol)
+            filters = symbol_info.get('filters', [])
+            
+            for filter_item in filters:
+                if filter_item.get('filterType') == 'LOT_SIZE':
+                    step_size = float(filter_item.get('stepSize', 0.001))
+                    return step_size
+            
+            return 0.001  # Default
+        except Exception as e:
+            logger.warning(f"Error getting step size for {symbol}: {e}. Using default 0.001")
+            return 0.001
+    
+    def format_quantity(self, symbol: str, quantity: float) -> str:
+        """
+        Format quantity according to Binance precision requirements.
+        
+        Parameters
+        ----------
+        symbol : str
+            Trading pair symbol
+        quantity : float
+            Raw quantity value
+        
+        Returns
+        -------
+        str
+            Formatted quantity string matching Binance requirements
+        """
+        try:
+            step_size = self.get_step_size(symbol)
+            
+            # Round to step size
+            if step_size >= 1.0:
+                # Integer step size
+                quantity = int(quantity / step_size) * step_size
+                return str(int(quantity))
+            else:
+                # Decimal step size - calculate decimal places
+                step_str = f"{step_size:.20f}".rstrip('0')
+                if '.' in step_str:
+                    decimal_places = len(step_str.split('.')[1])
+                else:
+                    decimal_places = 0
+                
+                # Round to step size
+                quantity = round(quantity / step_size) * step_size
+                
+                # Format with appropriate decimal places (but not scientific notation)
+                return f"{quantity:.{decimal_places}f}".rstrip('0').rstrip('.')
+        except Exception as e:
+            logger.warning(f"Error formatting quantity: {e}. Using simple format.")
+            # Fallback: format to 8 decimal places max, remove trailing zeros
+            return f"{quantity:.8f}".rstrip('0').rstrip('.')
     
     def get_current_price(self, symbol: str) -> float:
         """

@@ -481,8 +481,20 @@ class LiveTrader:
             # Generate trade ID
             trade_id = f"trade_{int(time.time() * 1000)}"
             
+            # Get minimum notional requirement
+            min_notional = self.binance_client.get_min_notional(self.config.symbol)
+            current_price = base_entry_price
+            
             # Calculate quote order quantity for market buy
             quote_order_qty = position_size * base_entry_price
+            
+            # Ensure minimum notional is met
+            if quote_order_qty < min_notional:
+                logger.warning(f"Calculated order value ${quote_order_qty:.2f} below minimum notional ${min_notional:.2f}. "
+                             f"Increasing to minimum.")
+                quote_order_qty = min_notional
+                # Recalculate position size based on minimum notional
+                position_size = quote_order_qty / current_price
             
             # Execute entry order
             direction = confirmed_setup['direction']
