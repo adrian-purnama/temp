@@ -303,10 +303,10 @@ class MarketData:
         try:
             # Initialize WebSocket manager with configuration
             self.socket_manager = self._configure_websocket_manager()
-                self.socket_manager.start()
+            self.socket_manager.start()
                 
             # Wait for initialization (ThreadedWebsocketManager needs time to start)
-                time.sleep(2)
+            time.sleep(2)
                 
             # For ThreadedWebsocketManager, we need to configure the underlying BinanceSocketManager
             if USE_THREADED_WS and hasattr(self.socket_manager, '_bsm'):

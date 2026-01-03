@@ -65,3 +65,26 @@
 2026-01-01 20:19:08,899 - trader.live.live_trader - INFO - Received interrupt signal, stopping...
 2026-01-01 20:19:08,905 - trader.live.live_trader - INFO - Stopping live trading...
 2026-01-01 20:19:14,319 - trader.live.live_trader - INFO - Live trading stopped
+2026-01-03 09:01:57,570 - trader.live.live_trader - INFO - Connected to Binance Testnet
+2026-01-03 09:01:57,757 - trader.live.live_trader - INFO - Using override initial balance: $100.00
+2026-01-03 09:01:57,757 - trader.live.live_trader - INFO - Initialized LiveTrader with balance: $100.00
+2026-01-03 09:01:57,758 - trader.live.live_trader - INFO - Starting live trading...
+2026-01-03 09:01:57,758 - trader.live.live_trader - INFO - Closing all positions and cancelling orders on startup...
+2026-01-03 09:01:57,903 - trader.live.live_trader - INFO - No open orders to cancel
+2026-01-03 09:01:58,046 - trader.live.live_trader - INFO - Found open position: 9e-05 BTC
+2026-01-03 09:01:58,175 - trader.live.live_trader - INFO - Closing position with market SELL order @ 90175.53
+2026-01-03 09:01:59,926 - trader.live.live_trader - ERROR - Error during position cleanup: APIError(code=-2010): Insufficient balance and faucet request failed: HTTP 404
+Traceback (most recent call last):
+  File "D:\live-trading-bot\trader\live\live_trader.py", line 839, in _close_all_positions_on_start
+    sell_order = self.binance_client.place_market_order(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\live-trading-bot\trader\live\binance_client.py", line 492, in place_market_order
+    raise create_insufficient_balance_exception(
+binance.exceptions.BinanceAPIException: APIError(code=-2010): Insufficient balance and faucet request failed: HTTP 404
+2026-01-03 09:01:59,937 - trader.live.live_trader - INFO - Recovering state from Binance API...
+2026-01-03 09:02:00,353 - trader.live.live_trader - INFO - Recovered position: 9e-05 @ 90175.53
+2026-01-03 09:02:00,632 - trader.live.live_trader - INFO - State recovery complete: recovered 1 item(s)
+2026-01-03 09:02:03,163 - trader.live.live_trader - INFO - Live trading started. Waiting for signals...
+2026-01-03 09:02:22,395 - trader.live.live_trader - INFO - Received interrupt signal, stopping...
+2026-01-03 09:02:22,396 - trader.live.live_trader - INFO - Stopping live trading...
+2026-01-03 09:02:27,538 - trader.live.live_trader - INFO - Live trading stopped
