@@ -9,12 +9,41 @@ Supports both Testnet and Realnet environments.
 import time
 import logging
 import requests
+import json
 from typing import Dict, Any, Optional, List, Tuple
 from binance.client import Client
 from binance.exceptions import BinanceAPIException, BinanceOrderException
 
 
 logger = logging.getLogger(__name__)
+
+
+def create_insufficient_balance_exception(message: str) -> BinanceAPIException:
+    """
+    Create a BinanceAPIException with code -2010 (insufficient balance).
+    
+    Parameters
+    ----------
+    message : str
+        Error message
+    
+    Returns
+    -------
+    BinanceAPIException
+        Exception with code -2010
+    """
+    # Create a mock response-like object
+    class MockResponse:
+        def __init__(self):
+            self.text = json.dumps({"code": -2010, "msg": message})
+    
+    mock_response = MockResponse()
+    exc = BinanceAPIException(
+        response=mock_response,
+        status_code=400,
+        text=mock_response.text
+    )
+    return exc
 
 
 class BinanceClient:
@@ -379,10 +408,11 @@ class BinanceClient:
                 )
                 
                 if not has_sufficient:
-                    shortfall = quote_order_qty * 1.01 - current_balance
+                    required_with_buffer = quote_order_qty * 1.01
+                    shortfall = max(0, required_with_buffer - current_balance)
                     logger.warning(f"Insufficient {quote_asset} balance for BUY order. "
                                  f"Current: {current_balance:.8f}, Required: {quote_order_qty:.8f}, "
-                                 f"Shortfall: {shortfall:.8f}")
+                                 f"Required+Buffer: {required_with_buffer:.8f}, Shortfall: {shortfall:.8f}")
                     
                     # Try faucet if on testnet and enabled
                     if self.use_testnet and auto_request_faucet:
@@ -394,23 +424,17 @@ class BinanceClient:
                                 quote_asset, quote_order_qty
                             )
                             if not has_sufficient:
-                                raise BinanceAPIException(
-                                    response=None,
-                                    status_code=400,
-                                    message=f"Insufficient balance after faucet request. "
-                                          f"Current: {current_balance:.8f}, Required: {quote_order_qty:.8f}"
+                                raise create_insufficient_balance_exception(
+                                    f"Insufficient balance after faucet request. "
+                                    f"Current: {current_balance:.8f}, Required: {quote_order_qty:.8f}"
                                 )
                         else:
-                            raise BinanceAPIException(
-                                response=None,
-                                status_code=400,
-                                message=f"Insufficient balance and faucet request failed: {faucet_result.get('error', 'Unknown error')}"
+                            raise create_insufficient_balance_exception(
+                                f"Insufficient balance and faucet request failed: {faucet_result.get('error', 'Unknown error')}"
                             )
                     else:
-                        raise BinanceAPIException(
-                            response=None,
-                            status_code=400,
-                            message=f"Insufficient {quote_asset} balance. Current: {current_balance:.8f}, Required: {quote_order_qty:.8f}"
+                        raise create_insufficient_balance_exception(
+                            f"Insufficient {quote_asset} balance. Current: {current_balance:.8f}, Required: {quote_order_qty:.8f}"
                         )
                 
                 # Format quote order quantity (remove decimals for quote)
@@ -444,10 +468,11 @@ class BinanceClient:
                 )
                 
                 if not has_sufficient:
-                    shortfall = quantity * 1.01 - current_balance
+                    required_with_buffer = quantity * 1.01
+                    shortfall = max(0, required_with_buffer - current_balance)
                     logger.warning(f"Insufficient {base_asset} balance for SELL order. "
                                  f"Current: {current_balance:.8f}, Required: {quantity:.8f}, "
-                                 f"Shortfall: {shortfall:.8f}")
+                                 f"Required+Buffer: {required_with_buffer:.8f}, Shortfall: {shortfall:.8f}")
                     
                     # Try faucet if on testnet and enabled
                     if self.use_testnet and auto_request_faucet:
@@ -459,23 +484,17 @@ class BinanceClient:
                                 base_asset, quantity
                             )
                             if not has_sufficient:
-                                raise BinanceAPIException(
-                                    response=None,
-                                    status_code=400,
-                                    message=f"Insufficient balance after faucet request. "
-                                          f"Current: {current_balance:.8f}, Required: {quantity:.8f}"
+                                raise create_insufficient_balance_exception(
+                                    f"Insufficient balance after faucet request. "
+                                    f"Current: {current_balance:.8f}, Required: {quantity:.8f}"
                                 )
                         else:
-                            raise BinanceAPIException(
-                                response=None,
-                                status_code=400,
-                                message=f"Insufficient balance and faucet request failed: {faucet_result.get('error', 'Unknown error')}"
+                            raise create_insufficient_balance_exception(
+                                f"Insufficient balance and faucet request failed: {faucet_result.get('error', 'Unknown error')}"
                             )
                     else:
-                        raise BinanceAPIException(
-                            response=None,
-                            status_code=400,
-                            message=f"Insufficient {base_asset} balance. Current: {current_balance:.8f}, Required: {quantity:.8f}"
+                        raise create_insufficient_balance_exception(
+                            f"Insufficient {base_asset} balance. Current: {current_balance:.8f}, Required: {quantity:.8f}"
                         )
                 
                 # Format quantity according to Binance precision requirements
