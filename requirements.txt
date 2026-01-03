@@ -11,6 +11,9 @@ websocket-client>=1.4.0
 # Terminal dashboard
 rich>=13.0.0
 
+# HTTP requests for faucet
+requests>=2.28.0
+
 
 
 

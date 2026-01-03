@@ -21,7 +21,8 @@ class LiveExecutionEngine(ExecutionEngine):
     """Live execution engine that executes orders on Binance."""
     
     def __init__(self, binance_client: BinanceClient, order_manager: OrderManager,
-                 fee_pct: float = 0.1, slippage_atr_mult: float = 0.0):
+                 fee_pct: float = 0.1, slippage_atr_mult: float = 0.0,
+                 auto_request_faucet: bool = True):
         """
         Initialize live execution engine.
         
@@ -35,10 +36,13 @@ class LiveExecutionEngine(ExecutionEngine):
             Transaction fee percentage (Binance default: 0.1%)
         slippage_atr_mult : float, default 0.0
             Slippage as ATR multiplier (0.0 = no slippage modeling)
+        auto_request_faucet : bool, default True
+            Automatically request faucet funds when balance insufficient (testnet only)
         """
         super().__init__(fee_pct=fee_pct, slippage_atr_mult=slippage_atr_mult)
         self.binance_client = binance_client
         self.order_manager = order_manager
+        self.auto_request_faucet = auto_request_faucet
         
         logger.info("Initialized LiveExecutionEngine")
     
@@ -74,7 +78,8 @@ class LiveExecutionEngine(ExecutionEngine):
                 symbol=symbol,
                 side=side,
                 quantity=quantity,
-                quote_order_qty=quote_order_qty
+                quote_order_qty=quote_order_qty,
+                auto_request_faucet=self.auto_request_faucet
             )
             
             # Register order with order manager
@@ -300,6 +305,7 @@ class LiveExecutionEngine(ExecutionEngine):
             return float(order_response['price'])
         
         return 0.0
+
 
 
 

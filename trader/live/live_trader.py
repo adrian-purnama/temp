@@ -14,6 +14,7 @@ import numpy as np
 from typing import Dict, Any, Optional
 from datetime import datetime, date
 from binance.client import Client
+from binance.exceptions import BinanceAPIException
 
 from trader.live.config import LiveTradingConfig
 from trader.live.binance_client import BinanceClient
@@ -111,7 +112,8 @@ class LiveTrader:
             binance_client=self.binance_client,
             order_manager=self.order_manager,
             fee_pct=config.fee_pct,
-            slippage_atr_mult=config.slippage_atr_mult
+            slippage_atr_mult=config.slippage_atr_mult,
+            auto_request_faucet=config.auto_request_faucet
         )
         
         # Initialize backtesting components (reuse)
@@ -447,6 +449,11 @@ class LiveTrader:
                             current_candle: pd.Series, atr_value: float,
                             account_equity: float, current_date: date):
         """Execute trade entry on Binance."""
+        # Initialize variables for error reporting
+        quote_order_qty = None
+        position_size = None
+        direction = None
+        
         try:
             # Determine entry price
             if self.config.execution_mode == "next_open":
@@ -498,6 +505,7 @@ class LiveTrader:
             
             # Execute entry order
             direction = confirmed_setup['direction']
+            
             entry_order = self.live_execution_engine.execute_entry_order(
                 symbol=self.config.symbol,
                 direction=direction,
@@ -572,6 +580,36 @@ class LiveTrader:
             
             logger.info(f"Entered trade {trade_id}: {direction} {actual_position_size} @ {actual_entry_price}")
             
+        except BinanceAPIException as e:
+            # Handle insufficient balance error specifically
+            if e.code == -2010:
+                trade_direction = direction if direction else confirmed_setup.get('direction', 'unknown')
+                if trade_direction == "long":
+                    quote_asset = "USDT"
+                    current_balance = self.binance_client.get_account_balance(quote_asset)
+                    required_amount = quote_order_qty if quote_order_qty is not None else 0
+                    logger.error(f"Insufficient balance error (-2010): {e}")
+                    logger.error(f"Current {quote_asset} balance: {current_balance:.8f}, "
+                               f"Required: {required_amount:.8f}, "
+                               f"Shortfall: {max(0, required_amount * 1.01 - current_balance):.8f}")
+                    if self.config.use_testnet:
+                        logger.warning("Balance check and faucet request should have been attempted. "
+                                     "If this error persists, faucet may be rate-limited or unavailable.")
+                else:
+                    base_asset = self.config.symbol.replace("USDT", "").replace("USD", "")
+                    current_balance = self.binance_client.get_account_balance(base_asset)
+                    required_amount = position_size if position_size is not None else 0
+                    logger.error(f"Insufficient balance error (-2010): {e}")
+                    logger.error(f"Current {base_asset} balance: {current_balance:.8f}, "
+                               f"Required: {required_amount:.8f}, "
+                               f"Shortfall: {max(0, required_amount * 1.01 - current_balance):.8f}")
+                    if self.config.use_testnet:
+                        logger.warning("Balance check and faucet request should have been attempted. "
+                                     "If this error persists, faucet may be rate-limited or unavailable.")
+            else:
+                logger.error(f"Binance API error executing trade entry: {e}", exc_info=True)
+            self.trade_state['current_state'] = STATE_IDLE
+            self.trade_state['pending_setup'] = None
         except Exception as e:
             logger.error(f"Error executing trade entry: {e}", exc_info=True)
             self.trade_state['current_state'] = STATE_IDLE

@@ -16,3 +16,4 @@ ENV PYTHONPATH=/app
 CMD ["python", "live_trading.py"]
 
 
+

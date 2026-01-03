@@ -8,7 +8,8 @@ Supports both Testnet and Realnet environments.
 
 import time
 import logging
-from typing import Dict, Any, Optional, List
+import requests
+from typing import Dict, Any, Optional, List, Tuple
 from binance.client import Client
 from binance.exceptions import BinanceAPIException, BinanceOrderException
 
@@ -126,6 +127,147 @@ class BinanceClient:
             logger.error(f"Error getting account info: {e}")
             raise
     
+    def check_sufficient_balance(self, asset: str, required_amount: float, 
+                                 buffer_pct: float = 0.01) -> Tuple[bool, float]:
+        """
+        Check if account has sufficient balance for a trade.
+        
+        Parameters
+        ----------
+        asset : str
+            Asset symbol (e.g., "USDT", "BTC")
+        required_amount : float
+            Required amount for the trade
+        buffer_pct : float, default 0.01
+            Buffer percentage to account for fees (1% default)
+        
+        Returns
+        -------
+        tuple
+            (has_sufficient_balance: bool, current_balance: float)
+        """
+        try:
+            current_balance = self.get_account_balance(asset)
+            required_with_buffer = required_amount * (1 + buffer_pct)
+            has_sufficient = current_balance >= required_with_buffer
+            
+            logger.debug(f"Balance check for {asset}: "
+                        f"Current={current_balance:.8f}, "
+                        f"Required={required_amount:.8f}, "
+                        f"Required+Buffer={required_with_buffer:.8f}, "
+                        f"Sufficient={has_sufficient}")
+            
+            return has_sufficient, current_balance
+        except Exception as e:
+            logger.error(f"Error checking balance: {e}")
+            # Return False on error to be safe
+            return False, 0.0
+    
+    def request_faucet_funds(self, asset: str = "USDT", 
+                            amount: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Request testnet funds from Binance faucet.
+        
+        Note: Faucet typically allows 1 request per 24 hours per asset.
+        This only works on testnet.
+        
+        Parameters
+        ----------
+        asset : str, default "USDT"
+            Asset to request (e.g., "USDT", "BTC")
+        amount : float or None, optional
+            Amount to request. If None, requests default amount.
+            Note: Faucet may ignore this and give default amount.
+        
+        Returns
+        -------
+        dict
+            Response containing success status and new balance
+        """
+        if not self.use_testnet:
+            logger.warning("Faucet requests only available on testnet")
+            return {
+                'success': False,
+                'error': 'Faucet only available on testnet',
+                'balance': self.get_account_balance(asset)
+            }
+        
+        faucet_url = f"{self.TESTNET_BASE_URL}/api/v3/faucet/claim"
+        
+        try:
+            # Get balance before request
+            balance_before = self.get_account_balance(asset)
+            
+            # Prepare request
+            headers = {
+                'X-MBX-APIKEY': self.api_key,
+                'Content-Type': 'application/json'
+            }
+            
+            # Binance testnet faucet typically uses POST with asset in body
+            # Some versions may require amount, but most ignore it
+            payload = {'asset': asset}
+            if amount is not None:
+                payload['amount'] = amount
+            
+            logger.info(f"Requesting {amount if amount else 'default'} {asset} from testnet faucet...")
+            
+            response = requests.post(
+                faucet_url,
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            
+            # Check response
+            if response.status_code == 200:
+                result = response.json()
+                # Wait a moment for balance to update
+                time.sleep(2)
+                balance_after = self.get_account_balance(asset)
+                received = balance_after - balance_before
+                
+                logger.info(f"✓ Faucet request successful! "
+                          f"Received {received:.8f} {asset}. "
+                          f"New balance: {balance_after:.8f} {asset}")
+                
+                return {
+                    'success': True,
+                    'balance_before': balance_before,
+                    'balance_after': balance_after,
+                    'received': received,
+                    'response': result
+                }
+            else:
+                error_msg = f"HTTP {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get('msg', error_msg)
+                except:
+                    error_msg = response.text or error_msg
+                
+                logger.warning(f"Faucet request failed: {error_msg}")
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'balance': self.get_account_balance(asset)
+                }
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error requesting faucet funds: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'balance': self.get_account_balance(asset)
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error requesting faucet funds: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'balance': self.get_account_balance(asset)
+            }
+    
     def get_open_positions(self, symbol: str) -> List[Dict[str, Any]]:
         """
         Get open positions for a symbol.
@@ -194,7 +336,8 @@ class BinanceClient:
             raise
     
     def place_market_order(self, symbol: str, side: str, quantity: float,
-                          quote_order_qty: Optional[float] = None) -> Dict[str, Any]:
+                          quote_order_qty: Optional[float] = None,
+                          auto_request_faucet: bool = True) -> Dict[str, Any]:
         """
         Place a market order.
         
@@ -208,6 +351,8 @@ class BinanceClient:
             Base asset quantity (for BUY, use quote_order_qty instead)
         quote_order_qty : float or None, optional
             Quote asset quantity (for market BUY orders)
+        auto_request_faucet : bool, default True
+            Automatically request faucet funds if balance insufficient (testnet only)
         
         Returns
         -------
@@ -226,6 +371,47 @@ class BinanceClient:
                     logger.warning(f"Order value {quote_order_qty} below minimum notional {min_notional}. "
                                  f"Increasing to minimum.")
                     quote_order_qty = min_notional
+                
+                # Check balance for BUY orders (need quote asset - USDT)
+                quote_asset = "USDT"  # Assuming USDT pairs
+                has_sufficient, current_balance = self.check_sufficient_balance(
+                    quote_asset, quote_order_qty
+                )
+                
+                if not has_sufficient:
+                    shortfall = quote_order_qty * 1.01 - current_balance
+                    logger.warning(f"Insufficient {quote_asset} balance for BUY order. "
+                                 f"Current: {current_balance:.8f}, Required: {quote_order_qty:.8f}, "
+                                 f"Shortfall: {shortfall:.8f}")
+                    
+                    # Try faucet if on testnet and enabled
+                    if self.use_testnet and auto_request_faucet:
+                        logger.info(f"Attempting to request {shortfall:.8f} {quote_asset} from faucet...")
+                        faucet_result = self.request_faucet_funds(quote_asset, amount=shortfall)
+                        if faucet_result['success']:
+                            # Recheck balance after faucet
+                            has_sufficient, current_balance = self.check_sufficient_balance(
+                                quote_asset, quote_order_qty
+                            )
+                            if not has_sufficient:
+                                raise BinanceAPIException(
+                                    response=None,
+                                    status_code=400,
+                                    message=f"Insufficient balance after faucet request. "
+                                          f"Current: {current_balance:.8f}, Required: {quote_order_qty:.8f}"
+                                )
+                        else:
+                            raise BinanceAPIException(
+                                response=None,
+                                status_code=400,
+                                message=f"Insufficient balance and faucet request failed: {faucet_result.get('error', 'Unknown error')}"
+                            )
+                    else:
+                        raise BinanceAPIException(
+                            response=None,
+                            status_code=400,
+                            message=f"Insufficient {quote_asset} balance. Current: {current_balance:.8f}, Required: {quote_order_qty:.8f}"
+                        )
                 
                 # Format quote order quantity (remove decimals for quote)
                 quote_order_qty_str = f"{quote_order_qty:.2f}".rstrip('0').rstrip('.')
@@ -251,6 +437,47 @@ class BinanceClient:
                     logger.warning(f"Order value {order_value} below minimum notional {min_notional}. "
                                  f"Increasing quantity to {quantity}.")
                 
+                # Check balance for SELL orders (need base asset)
+                base_asset = symbol.replace("USDT", "").replace("USD", "")
+                has_sufficient, current_balance = self.check_sufficient_balance(
+                    base_asset, quantity
+                )
+                
+                if not has_sufficient:
+                    shortfall = quantity * 1.01 - current_balance
+                    logger.warning(f"Insufficient {base_asset} balance for SELL order. "
+                                 f"Current: {current_balance:.8f}, Required: {quantity:.8f}, "
+                                 f"Shortfall: {shortfall:.8f}")
+                    
+                    # Try faucet if on testnet and enabled
+                    if self.use_testnet and auto_request_faucet:
+                        logger.info(f"Attempting to request {shortfall:.8f} {base_asset} from faucet...")
+                        faucet_result = self.request_faucet_funds(base_asset, amount=shortfall)
+                        if faucet_result['success']:
+                            # Recheck balance after faucet
+                            has_sufficient, current_balance = self.check_sufficient_balance(
+                                base_asset, quantity
+                            )
+                            if not has_sufficient:
+                                raise BinanceAPIException(
+                                    response=None,
+                                    status_code=400,
+                                    message=f"Insufficient balance after faucet request. "
+                                          f"Current: {current_balance:.8f}, Required: {quantity:.8f}"
+                                )
+                        else:
+                            raise BinanceAPIException(
+                                response=None,
+                                status_code=400,
+                                message=f"Insufficient balance and faucet request failed: {faucet_result.get('error', 'Unknown error')}"
+                            )
+                    else:
+                        raise BinanceAPIException(
+                            response=None,
+                            status_code=400,
+                            message=f"Insufficient {base_asset} balance. Current: {current_balance:.8f}, Required: {quantity:.8f}"
+                        )
+                
                 # Format quantity according to Binance precision requirements
                 quantity_str = self.format_quantity(symbol, quantity)
                 
@@ -262,7 +489,23 @@ class BinanceClient:
             
             logger.info(f"Placed market {side} order: {order['orderId']} for {symbol}")
             return order
-        except (BinanceAPIException, BinanceOrderException) as e:
+        except BinanceAPIException as e:
+            # Handle -2010 insufficient balance error specifically
+            if e.code == -2010:
+                logger.error(f"Insufficient balance error (-2010): {e}")
+                # Log balance details
+                if side == "BUY" and quote_order_qty is not None:
+                    quote_asset = "USDT"
+                    current_balance = self.get_account_balance(quote_asset)
+                    logger.error(f"Current {quote_asset} balance: {current_balance:.8f}, "
+                               f"Required: {quote_order_qty:.8f}")
+                else:
+                    base_asset = symbol.replace("USDT", "").replace("USD", "")
+                    current_balance = self.get_account_balance(base_asset)
+                    logger.error(f"Current {base_asset} balance: {current_balance:.8f}, "
+                               f"Required: {quantity:.8f}")
+            raise
+        except BinanceOrderException as e:
             logger.error(f"Error placing market order: {e}")
             raise
     

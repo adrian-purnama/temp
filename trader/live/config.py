@@ -17,6 +17,7 @@ class LiveTradingConfig:
     use_testnet: bool = True
     api_key: str = "DSAmKuRluJwGG76oleQnXl45Wa8eWLVINBUNQNDgSfXDnDNM0Rr40LynS297RGii"
     api_secret: str = "KfrQLOj3ji9E7bOdG0f4qEkPGZqpVfL3Wu9Fux5B0mDZpu1BqtewZNvJ9n26tg4J"
+    auto_request_faucet: bool = True  # Automatically request faucet funds when balance insufficient (testnet only)
     
     # api_key: str = "hHsWE5juhEC9YeVeI5oT5azi3z4gv0PcE09OcClZ47jKfYGgJNJFWN1S4fMb4dU2"
     # api_secret: str = "CdNKNTiEsc3wuNoAJGiF4qECyaTznkonKReRGpxXafJdxrIDgJie7xuBFRLHYPlm"
