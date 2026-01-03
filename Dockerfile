@@ -12,8 +12,9 @@ COPY . .
 # Set Python path
 ENV PYTHONPATH=/app
 
-# Run the live trading bot
-CMD ["python", "live_trade.py"]
+# Run the live trading bot with unbuffered output for Docker logging
+CMD ["python", "-u", "live_trade.py"]
+
 
 
 
