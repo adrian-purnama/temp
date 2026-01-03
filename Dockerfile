@@ -13,7 +13,7 @@ COPY . .
 ENV PYTHONPATH=/app
 
 # Run the live trading bot
-CMD ["python", "live_trading.py"]
+CMD ["python", "live_trade.py"]
 
 
 
