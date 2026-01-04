@@ -163,12 +163,13 @@ def start_market_data_stream(client, symbol=None, interval='15m'):
     import time
     time.sleep(1)
     
-    # Start kline stream with error callback
+    # Start kline stream
+    # Note: on_error parameter not supported in this version of python-binance
+    # Errors are handled within handle_socket_message() instead
     twm.start_kline_socket(
         callback=handle_socket_message,
         symbol=symbol.lower(),
-        interval=interval,
-        on_error=handle_socket_error  # Add error callback to handle connection errors
+        interval=interval
     )
     
     return twm
