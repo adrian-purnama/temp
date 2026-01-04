@@ -426,9 +426,9 @@ def run_trading_loop(get_next_candle, client=None):
 
 
 def run_live_trading(client=None):
-    global open_positions, paper_balance
+    global open_positions, paper_balance, candles
     
-    from trader.live.connect import start_market_data_stream, get_next_candle
+    from trader.live.connect import start_market_data_stream, get_next_candle, bootstrap_historical_candles
     
     if client is None:
         from trader.live.connect import connect_binance
@@ -438,7 +438,25 @@ def run_live_trading(client=None):
     open_positions = load_positions()
     paper_balance = load_paper_balance()
     
-    twm = start_market_data_stream(client)
+    # Bootstrap historical candles before starting websocket
+    config = Config()
+    interval = '15m'  # Match the interval used for websocket
+    
+    historical_candles = bootstrap_historical_candles(
+        client, 
+        symbol=config.symbol, 
+        interval=interval, 
+        limit=min_candles
+    )
+    
+    if historical_candles:
+        candles = historical_candles
+        print(f"[BOOTSTRAP] Loaded {len(candles)} candles into memory. Ready to start trading.")
+    else:
+        print(f"[BOOTSTRAP] Warning: No historical candles loaded. Will collect from websocket.")
+        candles = []
+    
+    twm = start_market_data_stream(client, symbol=config.symbol, interval=interval)
     
     try:
         # Run trading loop (this blocks and processes candles)

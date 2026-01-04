@@ -179,6 +179,66 @@ def get_next_candle():
     return candle_queue.get()
 
 
+def bootstrap_historical_candles(client, symbol=None, interval='15m', limit=200):
+    """
+    Fetch historical klines from Binance API to bootstrap the trading system.
+    
+    Parameters
+    ----------
+    client : binance.client.Client
+        Binance API client
+    symbol : str, optional
+        Trading symbol (defaults to Config.symbol)
+    interval : str, default '15m'
+        Kline interval
+    limit : int, default 200
+        Number of historical candles to fetch
+    
+    Returns
+    -------
+    list
+        List of candle dictionaries in the same format as websocket messages
+    """
+    if symbol is None:
+        symbol = Config.symbol
+    
+    print(f"[BOOTSTRAP] Fetching {limit} historical candles for {symbol} @ {interval}...")
+    
+    try:
+        # Fetch historical klines
+        klines = client.get_klines(
+            symbol=symbol.upper(),
+            interval=interval,
+            limit=limit
+        )
+        
+        # Convert to same format as websocket messages
+        candles = []
+        for kline in klines:
+            candle_data = {
+                'timestamp': pd.to_datetime(kline[0], unit='ms'),  # Open time
+                'open': float(kline[1]),
+                'high': float(kline[2]),
+                'low': float(kline[3]),
+                'close': float(kline[4]),
+                'volume': float(kline[5]),
+                'is_closed': True  # Historical candles are always closed
+            }
+            candles.append(candle_data)
+        
+        print(f"[BOOTSTRAP] Successfully loaded {len(candles)} historical candles")
+        if len(candles) > 0:
+            print(f"[BOOTSTRAP] Date range: {candles[0]['timestamp']} to {candles[-1]['timestamp']}")
+        
+        return candles
+        
+    except Exception as e:
+        print(f"[BOOTSTRAP ERROR] Failed to fetch historical candles: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
 if __name__ == "__main__":
     import signal
     import time
