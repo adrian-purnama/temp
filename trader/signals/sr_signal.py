@@ -1010,6 +1010,14 @@ class SRSignal(BaseSignal):
         
         # Step 1: Detect pivots
         pivots_df = detect_pivots(context, left_bars=LEFT_BARS, right_bars=RIGHT_BARS)
+        num_pivots = len(pivots_df) if pivots_df is not None and len(pivots_df) > 0 else 0
+        if num_pivots > 0 and 'type' in pivots_df.columns:
+            pivot_highs = len(pivots_df[pivots_df['type'] == 'high'])
+            pivot_lows = len(pivots_df[pivots_df['type'] == 'low'])
+        else:
+            pivot_highs = 0
+            pivot_lows = 0
+        print(f"[SR DEBUG] Step 1 - Pivots detected: {num_pivots} total ({pivot_highs} highs, {pivot_lows} lows)")
         
         # Step 2: Cluster pivots into zones
         # IMPORTANT: Recalculate zones every candle (matching notebook behavior)
@@ -1024,6 +1032,14 @@ class SRSignal(BaseSignal):
             zone_width_atr_mult=ZONE_WIDTH_ATR_MULT,
             min_pivots=MIN_PIVOTS_PER_ZONE
         )
+        num_zones = len(zones_df) if zones_df is not None and len(zones_df) > 0 else 0
+        if num_zones > 0 and 'zone_type' in zones_df.columns:
+            support_zones = len(zones_df[zones_df['zone_type'] == 'support'])
+            resistance_zones = len(zones_df[zones_df['zone_type'] == 'resistance'])
+        else:
+            support_zones = 0
+            resistance_zones = 0
+        print(f"[SR DEBUG] Step 2 - Zones created: {num_zones} total ({support_zones} support, {resistance_zones} resistance)")
         
         # Step 3: Classify zone interactions
         interactions_df = classify_zone_interactions(
@@ -1031,6 +1047,13 @@ class SRSignal(BaseSignal):
             rejection_body_ratio=REJECTION_BODY_RATIO,
             breakout_buffer_atr_mult=BREAKOUT_BUFFER_ATR_MULT
         )
+        num_interactions = len(interactions_df) if interactions_df is not None and len(interactions_df) > 0 else 0
+        if num_interactions > 0 and 'interaction_type' in interactions_df.columns:
+            rejection_count = len(interactions_df[interactions_df['interaction_type'] == 'rejection'])
+            breakout_count = len(interactions_df[interactions_df['interaction_type'] == 'breakout'])
+            print(f"[SR DEBUG] Step 3 - Interactions: {num_interactions} total ({rejection_count} rejections, {breakout_count} breakouts)")
+        else:
+            print(f"[SR DEBUG] Step 3 - Interactions: {num_interactions} (no price-zone interactions)")
         
         # Step 4: Update zone metadata
         zones_df = update_zone_metadata(zones_df, interactions_df, current_index)
@@ -1043,6 +1066,24 @@ class SRSignal(BaseSignal):
             breakout_confirmation_candles=self.breakout_confirmation_candles,
             previous_close=previous_close
         )
+        
+        # Log waiting state and confirmed events
+        if updated_waiting_state:
+            state_type = updated_waiting_state.get('state_type', 'unknown')
+            candles_waited = updated_waiting_state.get('candles_waited', 0)
+            candles_required = updated_waiting_state.get('confirmation_candles_required', 0)
+            direction = updated_waiting_state.get('direction', 'N/A')
+            print(f"[SR DEBUG] Step 5 - Waiting state: {state_type} ({direction}), Progress: {candles_waited}/{candles_required} candles")
+        else:
+            print(f"[SR DEBUG] Step 5 - Waiting state: None")
+        
+        num_confirmed_events = len(confirmed_events) if confirmed_events else 0
+        if num_confirmed_events > 0:
+            rebound_events = sum(1 for e in confirmed_events if e.get('event_type') == 'confirmed_rebound_setup')
+            breakout_events = sum(1 for e in confirmed_events if e.get('event_type') == 'confirmed_breakout_setup')
+            print(f"[SR DEBUG] Step 5 - Confirmed events: {num_confirmed_events} ({rebound_events} rebounds, {breakout_events} breakouts)")
+        else:
+            print(f"[SR DEBUG] Step 5 - Confirmed events: {num_confirmed_events}")
         
         # Step 6: Generate standardized signal from confirmed events
         signal = self._generate_standardized_signal(

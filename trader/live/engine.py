@@ -19,6 +19,7 @@ candles: List[Dict[str, Any]] = []
 signal_state: Optional[Dict[str, Any]] = None
 signal_generator = SRSignal()
 min_candles = 200  # Need enough for ATR + window_size
+candle_count = 0  # Counter for periodic status updates
 
 # Global positions dictionary (stored in RAM for fast access)
 open_positions: Dict[str, Dict[str, Any]] = {}
@@ -272,7 +273,7 @@ def check_exit_strategy(candle_data: Dict[str, Any], client=None):
 
 
 def process_candle_update(candle_data: Dict[str, Any], client=None):
-    global candles, signal_state
+    global candles, signal_state, candle_count
     
     is_closed = candle_data.get('is_closed', False)
     
@@ -285,11 +286,13 @@ def process_candle_update(candle_data: Dict[str, Any], client=None):
     
     # For closed candles, add to history and generate signal
     candles.append(candle_data)
+    candle_count += 1
     
     if len(candles) > min_candles + 50:
         candles = candles[-min_candles:]
     
     if len(candles) < min_candles:
+        print(f"[SR DEBUG] Collecting candles: {len(candles)}/{min_candles} (need {min_candles - len(candles)} more)")
         return None
     
     # Convert to DataFrame
@@ -315,6 +318,41 @@ def process_candle_update(candle_data: Dict[str, Any], client=None):
     
     # Update state
     signal_state = updated_state
+    
+    # Extract signal metadata for logging
+    metadata = signal.get('metadata', {})
+    direction = signal.get('direction', 0)
+    strength = signal.get('strength', 0.0)
+    
+    # Log signal generation result (including flat signals)
+    if direction != 0:
+        print(f"[SR SIGNAL] ✓ Actionable signal generated: direction={direction}, strength={strength:.2f}")
+        print(f"           Setup: {metadata.get('setup_type', 'N/A')}, Zone: {metadata.get('zone_type', 'N/A')}")
+        if metadata.get('entry_price'):
+            print(f"           Entry price: {metadata.get('entry_price'):.2f}")
+    else:
+        # Log why signal is flat
+        waiting_state = metadata.get('waiting_state')
+        if waiting_state:
+            candles_waited = metadata.get('candles_waited', 0)
+            candles_required = metadata.get('candles_required', 0)
+            waiting_direction = metadata.get('waiting_direction', 'N/A')
+            print(f"[SR SIGNAL] → Flat signal (waiting for confirmation): {waiting_state}")
+            print(f"           Direction: {waiting_direction}, Progress: {candles_waited}/{candles_required} candles")
+        else:
+            print(f"[SR SIGNAL] → Flat signal (no confirmed events, no waiting state)")
+    
+    # Periodic status summary (every 20 candles)
+    if candle_count % 20 == 0:
+        zones_df = updated_state.get('zones_df')
+        waiting_state = updated_state.get('waiting_state')
+        num_zones = len(zones_df) if zones_df is not None and hasattr(zones_df, '__len__') else 0
+        
+        print(f"[SR STATUS] Candle #{candle_count} | Zones: {num_zones} | ", end="")
+        if waiting_state:
+            print(f"Waiting: {waiting_state.get('state_type', 'N/A')} ({waiting_state.get('candles_waited', 0)}/{waiting_state.get('confirmation_candles_required', 0)})")
+        else:
+            print("Waiting: None")
     
     # Return signal if direction is not flat
     if signal['direction'] != 0:

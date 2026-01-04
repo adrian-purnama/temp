@@ -81,9 +81,36 @@ def get_account_info(api_key=None, api_secret=None):
 
 # Global queue for candles
 candle_queue = queue.Queue()
+
+def handle_socket_error(error):
+    """Handle websocket connection errors."""
+    print(f"[WEBSOCKET ERROR] Connection error: {error}")
+    import traceback
+    traceback.print_exc()
+
+
 def handle_socket_message(msg):
     """Handle incoming websocket message and convert to candle format."""
     try:
+        # Check if this is an error message (multiple formats possible)
+        if isinstance(msg, dict):
+            # Check for error indicator
+            if 'e' in msg:
+                if msg.get('e') == 'error' or msg.get('e') == 'ERROR':
+                    error_msg = msg.get('m', msg.get('msg', 'Unknown error'))
+                    print(f"[WEBSOCKET ERROR] {error_msg}")
+                    return
+            
+            # Check if message has error-like structure ['e', 'type', 'm']
+            if 'e' in msg and 'm' in msg and 'type' in msg:
+                # This appears to be an error/system message format
+                error_type = msg.get('type', 'unknown')
+                error_msg = msg.get('m', 'No message')
+                if error_type != 'ping' and error_type != 'pong':
+                    print(f"[WEBSOCKET] System message - type: {error_type}, message: {error_msg}")
+                return
+        
+        # Check if this is a kline message
         if 'k' in msg:
             kline = msg['k']
             
@@ -113,9 +140,8 @@ def handle_socket_message(msg):
             
             # Put ALL candles in queue (for exit strategy)
             candle_queue.put(candle_data)
-        else:
-            # Debug: show if we're getting other message types
-            print(f"Received non-kline message: {list(msg.keys())}")
+        # Other message types are handled above (errors, system messages)
+        # If we reach here, it's an unhandled message type - silently ignore
                 
     except Exception as e:
         print(f"Error handling socket message: {e}")
@@ -137,11 +163,12 @@ def start_market_data_stream(client, symbol=None, interval='15m'):
     import time
     time.sleep(1)
     
-    # Start kline stream
+    # Start kline stream with error callback
     twm.start_kline_socket(
         callback=handle_socket_message,
         symbol=symbol.lower(),
-        interval=interval
+        interval=interval,
+        on_error=handle_socket_error  # Add error callback to handle connection errors
     )
     
     return twm

@@ -1,3 +1,5 @@
+import sys
+import traceback
 from trader.live.connect import test_connection, get_account_info, connect_binance
 from trader.live.prepare import prepare_live_trading
 from trader.live.engine import run_live_trading
@@ -5,10 +7,15 @@ from trader.config import Config
 
 
 def main():
+    # Flush output immediately to ensure Docker logs show startup
+    sys.stdout.flush()
+    sys.stderr.flush()
+    
     print(80 * "=")
     print("Live Trading Bot - Starting Up")
     print(80 * "=")
     print()
+    sys.stdout.flush()
     
     # Test connection
     print("Testing Connection to Binance...")
@@ -106,7 +113,9 @@ def main():
         print("Bot stopped by user")
         print(80 * "=")
     except Exception as e:
-        print(f"\n✗ Error running trading bot: {e}")
+        print(f"\n✗ Error running trading bot: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
         raise
 
 
