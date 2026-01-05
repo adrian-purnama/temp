@@ -30,6 +30,10 @@ class Config:
     paper_initial_balance: float = 100.0  # Starting balance for paper trading (USDT)
     paper_position_size_percent: float = 10.0  # Percentage of balance to use per position (e.g., 10.0 = 10%)
     
+    # Telegram notifications
+    telegram_bot_token: str = ""  # Telegram bot token (get from @BotFather)
+    telegram_chat_id: str = ""  # Telegram chat ID to send messages to
+    
     def __post_init__(self):
         """Override defaults with environment variables if present."""
         # API credentials
@@ -56,6 +60,10 @@ class Config:
             self.paper_initial_balance = float(os.getenv("PAPER_INITIAL_BALANCE"))
         if os.getenv("PAPER_POSITION_SIZE_PERCENT"):
             self.paper_position_size_percent = float(os.getenv("PAPER_POSITION_SIZE_PERCENT"))
+        
+        # Telegram notifications
+        self.telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", self.telegram_bot_token)
+        self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", self.telegram_chat_id)
 
     def get_endPoint(self):
         if self.testnet:

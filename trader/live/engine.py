@@ -3,7 +3,8 @@ from pathlib import Path
 import pandas as pd
 import json
 import uuid
-from datetime import datetime
+import threading
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
 # Add project root to Python path
@@ -26,6 +27,11 @@ open_positions: Dict[str, Dict[str, Any]] = {}
 
 # Global paper balance (stored in RAM for fast access)
 paper_balance: float = 0.0
+
+# Telegram notification scheduler
+telegram_scheduler_thread: Optional[threading.Timer] = None
+last_telegram_notification: Optional[datetime] = None
+initial_balance: float = 0.0  # Track initial balance for PnL calculation
 
 
 def load_positions() -> Dict[str, Dict[str, Any]]:
@@ -425,8 +431,72 @@ def run_trading_loop(get_next_candle, client=None):
                 continue
 
 
+def send_daily_balance_notification():
+    """Send daily balance notification to Telegram and schedule the next one."""
+    global paper_balance, open_positions, initial_balance, telegram_scheduler_thread, last_telegram_notification
+    
+    from trader.live.telegram_notifier import send_balance_update
+    config = Config()
+    
+    # Only send if Telegram is configured
+    if config.telegram_bot_token and config.telegram_chat_id:
+        send_balance_update(
+            balance=paper_balance,
+            initial_balance=initial_balance,
+            open_positions=open_positions,
+            symbol=config.symbol
+        )
+        last_telegram_notification = datetime.now()
+        print(f"[TELEGRAM] Daily balance notification sent. Next notification in 24 hours.")
+    else:
+        print(f"[TELEGRAM] Telegram not configured. Skipping notification.")
+    
+    # Schedule next notification in 24 hours
+    schedule_next_daily_notification()
+
+
+def schedule_next_daily_notification():
+    """Schedule the next daily balance notification."""
+    global telegram_scheduler_thread
+    
+    # Cancel existing timer if any
+    if telegram_scheduler_thread and telegram_scheduler_thread.is_alive():
+        telegram_scheduler_thread.cancel()
+    
+    # Schedule next notification in 24 hours (86400 seconds)
+    telegram_scheduler_thread = threading.Timer(86400.0, send_daily_balance_notification)
+    telegram_scheduler_thread.daemon = True  # Allow program to exit even if timer is running
+    telegram_scheduler_thread.start()
+    next_time = datetime.now() + timedelta(hours=24)
+    print(f"[TELEGRAM] Next daily notification scheduled for: {next_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+
+def start_telegram_notifications():
+    """Start the daily Telegram notification scheduler."""
+    global initial_balance, paper_balance
+    
+    config = Config()
+    
+    # Only start if Telegram is configured
+    if not config.telegram_bot_token or not config.telegram_chat_id:
+        print("[TELEGRAM] Telegram not configured. Daily notifications disabled.")
+        print("[TELEGRAM] Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env to enable.")
+        return
+    
+    # Store initial balance for PnL calculation (use config value, not current balance)
+    # This ensures PnL is calculated from the true starting point
+    initial_balance = config.paper_initial_balance
+    
+    # Send immediate notification on startup
+    print("[TELEGRAM] Sending startup balance notification...")
+    send_daily_balance_notification()
+    
+    # Schedule daily notifications
+    schedule_next_daily_notification()
+
+
 def run_live_trading(client=None):
-    global open_positions, paper_balance, candles
+    global open_positions, paper_balance, candles, initial_balance
     
     from trader.live.connect import start_market_data_stream, get_next_candle, bootstrap_historical_candles
     
@@ -438,8 +508,12 @@ def run_live_trading(client=None):
     open_positions = load_positions()
     paper_balance = load_paper_balance()
     
-    # Bootstrap historical candles before starting websocket
+    # Store initial balance for PnL tracking
     config = Config()
+    # Always use the configured initial balance for PnL calculation
+    initial_balance = config.paper_initial_balance
+    
+    # Bootstrap historical candles before starting websocket
     interval = config.interval  # Get interval from config (can be set via env var)
     
     historical_candles = bootstrap_historical_candles(
@@ -458,6 +532,9 @@ def run_live_trading(client=None):
     
     twm = start_market_data_stream(client, symbol=config.symbol, interval=interval)
     
+    # Start Telegram daily notifications
+    start_telegram_notifications()
+    
     try:
         # Run trading loop (this blocks and processes candles)
         run_trading_loop(get_next_candle, client)
@@ -468,6 +545,12 @@ def run_live_trading(client=None):
         save_paper_balance()
         raise
     finally:
+        # Cancel Telegram scheduler
+        global telegram_scheduler_thread
+        if telegram_scheduler_thread and telegram_scheduler_thread.is_alive():
+            telegram_scheduler_thread.cancel()
+            print("Stopped Telegram notification scheduler")
+        
         # Stop websocket when done
         print("Stopping websocket...")
         twm.stop()
