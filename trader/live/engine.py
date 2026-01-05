@@ -440,18 +440,23 @@ def send_daily_balance_notification():
     
     # Only send if Telegram is configured
     if config.telegram_bot_token and config.telegram_chat_id:
-        send_balance_update(
+        success = send_balance_update(
             balance=paper_balance,
             initial_balance=initial_balance,
             open_positions=open_positions,
             symbol=config.symbol
         )
-        last_telegram_notification = datetime.now()
-        print(f"[TELEGRAM] Daily balance notification sent. Next notification in 24 hours.")
+        
+        if success:
+            last_telegram_notification = datetime.now()
+            print(f"[TELEGRAM] Daily balance notification sent. Next notification in 24 hours.")
+        else:
+            print(f"[TELEGRAM] Failed to send notification. Will retry in 24 hours.")
+            print(f"[TELEGRAM] Please check your TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env file")
     else:
         print(f"[TELEGRAM] Telegram not configured. Skipping notification.")
     
-    # Schedule next notification in 24 hours
+    # Schedule next notification in 24 hours (even if this one failed)
     schedule_next_daily_notification()
 
 
@@ -482,6 +487,13 @@ def start_telegram_notifications():
         print("[TELEGRAM] Telegram not configured. Daily notifications disabled.")
         print("[TELEGRAM] Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env to enable.")
         return
+    
+    # Test connection first
+    from trader.live.telegram_notifier import test_telegram_connection
+    print("[TELEGRAM] Testing bot connection...")
+    if not test_telegram_connection():
+        print("[TELEGRAM] Connection test failed. Please check your configuration.")
+        print("[TELEGRAM] Daily notifications will still be scheduled, but may fail.")
     
     # Store initial balance for PnL calculation (use config value, not current balance)
     # This ensures PnL is calculated from the true starting point
