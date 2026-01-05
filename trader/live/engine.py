@@ -440,7 +440,7 @@ def run_live_trading(client=None):
     
     # Bootstrap historical candles before starting websocket
     config = Config()
-    interval = '15m'  # Match the interval used for websocket
+    interval = config.interval  # Get interval from config (can be set via env var)
     
     historical_candles = bootstrap_historical_candles(
         client, 

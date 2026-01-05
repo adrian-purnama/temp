@@ -1,1 +1,4 @@
 trading-env
+
+# Environment variables
+.env

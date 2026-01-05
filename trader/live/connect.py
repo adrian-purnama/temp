@@ -149,9 +149,12 @@ def handle_socket_message(msg):
         traceback.print_exc()
 
 
-def start_market_data_stream(client, symbol=None, interval='15m'):
+def start_market_data_stream(client, symbol=None, interval=None):
     if symbol is None:
         symbol = Config.symbol
+    if interval is None:
+        config = Config()
+        interval = config.interval
     
     print(f"Starting market data stream for {symbol} @ {interval}")
     
@@ -179,28 +182,12 @@ def get_next_candle():
     return candle_queue.get()
 
 
-def bootstrap_historical_candles(client, symbol=None, interval='15m', limit=200):
-    """
-    Fetch historical klines from Binance API to bootstrap the trading system.
-    
-    Parameters
-    ----------
-    client : binance.client.Client
-        Binance API client
-    symbol : str, optional
-        Trading symbol (defaults to Config.symbol)
-    interval : str, default '15m'
-        Kline interval
-    limit : int, default 200
-        Number of historical candles to fetch
-    
-    Returns
-    -------
-    list
-        List of candle dictionaries in the same format as websocket messages
-    """
+def bootstrap_historical_candles(client, symbol=None, interval=None, limit=200):
     if symbol is None:
         symbol = Config.symbol
+    if interval is None:
+        config = Config()
+        interval = config.interval
     
     print(f"[BOOTSTRAP] Fetching {limit} historical candles for {symbol} @ {interval}...")
     
