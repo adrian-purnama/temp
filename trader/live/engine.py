@@ -444,7 +444,8 @@ def send_daily_balance_notification():
             balance=paper_balance,
             initial_balance=initial_balance,
             open_positions=open_positions,
-            symbol=config.symbol
+            symbol=config.symbol,
+            interval=config.interval
         )
         
         if success:

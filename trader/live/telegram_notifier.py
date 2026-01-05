@@ -151,7 +151,7 @@ def send_telegram_message(message: str, bot_token: Optional[str] = None, chat_id
         return False
 
 
-def format_balance_message(balance: float, initial_balance: float, open_positions: dict, symbol: str) -> str:
+def format_balance_message(balance: float, initial_balance: float, open_positions: dict, symbol: str, interval: str = "15m") -> str:
     """
     Format a balance update message for Telegram.
     
@@ -165,6 +165,8 @@ def format_balance_message(balance: float, initial_balance: float, open_position
         Dictionary of open positions
     symbol : str
         Trading symbol
+    interval : str, default "15m"
+        Trading time frame interval
     
     Returns
     -------
@@ -180,6 +182,7 @@ def format_balance_message(balance: float, initial_balance: float, open_position
     
     message = f"<b>💰 Daily Balance Update</b>\n\n"
     message += f"<b>Symbol:</b> {symbol}\n"
+    message += f"<b>Time Frame:</b> {interval}\n"
     message += f"<b>Current Balance:</b> {balance:.2f} USDT\n"
     message += f"<b>Initial Balance:</b> {initial_balance:.2f} USDT\n"
     message += f"<b>PnL:</b> {pnl_emoji} {pnl:+.2f} USDT ({pnl_pct:+.2f}%)\n"
@@ -189,7 +192,7 @@ def format_balance_message(balance: float, initial_balance: float, open_position
     return message
 
 
-def send_balance_update(balance: float, initial_balance: float, open_positions: dict, symbol: str) -> bool:
+def send_balance_update(balance: float, initial_balance: float, open_positions: dict, symbol: str, interval: str = "15m") -> bool:
     """
     Send a balance update message to Telegram.
     
@@ -203,13 +206,15 @@ def send_balance_update(balance: float, initial_balance: float, open_positions: 
         Dictionary of open positions
     symbol : str
         Trading symbol
+    interval : str, default "15m"
+        Trading time frame interval
     
     Returns
     -------
     bool
         True if message was sent successfully, False otherwise
     """
-    message = format_balance_message(balance, initial_balance, open_positions, symbol)
+    message = format_balance_message(balance, initial_balance, open_positions, symbol, interval)
     return send_telegram_message(message)
 
 
@@ -232,7 +237,8 @@ if __name__ == "__main__":
         balance=105.50,
         initial_balance=100.0,
         open_positions={},
-        symbol=config.symbol
+        symbol=config.symbol,
+        interval=config.interval
     )
     print("Test message:")
     print(test_message)
