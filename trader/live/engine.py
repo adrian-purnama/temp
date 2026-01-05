@@ -542,7 +542,12 @@ def run_live_trading(client=None):
         print(f"[BOOTSTRAP] Warning: No historical candles loaded. Will collect from websocket.")
         candles = []
     
-    twm = start_market_data_stream(client, symbol=config.symbol, interval=interval)
+    try:
+        twm = start_market_data_stream(client, symbol=config.symbol, interval=interval)
+    except ConnectionError as e:
+        print(f"\n[FATAL ERROR] Cannot start trading bot: {e}")
+        print(f"[FATAL ERROR] Please fix the connection issue and try again.")
+        return
     
     # Start Telegram daily notifications
     start_telegram_notifications()
@@ -556,6 +561,12 @@ def run_live_trading(client=None):
         save_positions()
         save_paper_balance()
         raise
+    except ConnectionError as e:
+        print(f"\n[FATAL ERROR] Websocket connection lost: {e}")
+        print(f"[FATAL ERROR] Saving state and shutting down...")
+        save_positions()
+        save_paper_balance()
+        raise
     finally:
         # Cancel Telegram scheduler
         global telegram_scheduler_thread
@@ -564,9 +575,12 @@ def run_live_trading(client=None):
             print("Stopped Telegram notification scheduler")
         
         # Stop websocket when done
-        print("Stopping websocket...")
-        twm.stop()
-        print("Stopped")
+        try:
+            print("Stopping websocket...")
+            twm.stop()
+            print("Stopped")
+        except Exception as e:
+            print(f"[WARNING] Error stopping websocket: {e}")
 
 
 if __name__ == "__main__":

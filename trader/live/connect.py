@@ -84,9 +84,28 @@ candle_queue = queue.Queue()
 
 def handle_socket_error(error):
     """Handle websocket connection errors."""
-    print(f"[WEBSOCKET ERROR] Connection error: {error}")
-    import traceback
-    traceback.print_exc()
+    error_type = type(error).__name__
+    error_msg = str(error)
+    
+    print(f"[WEBSOCKET ERROR] {error_type}: {error_msg}")
+    
+    # Provide helpful context based on error type
+    if isinstance(error, ConnectionRefusedError):
+        print(f"[WEBSOCKET ERROR] Connection was refused by Binance server")
+        print(f"[WEBSOCKET ERROR] This may be temporary - the connection will attempt to reconnect automatically")
+    elif isinstance(error, OSError):
+        errno = getattr(error, 'errno', None)
+        if errno == 111:
+            print(f"[WEBSOCKET ERROR] Connection refused (errno 111)")
+        elif errno == 110:
+            print(f"[WEBSOCKET ERROR] Connection timeout (errno 110)")
+        else:
+            print(f"[WEBSOCKET ERROR] Network error (errno {errno})")
+        print(f"[WEBSOCKET ERROR] The websocket manager will attempt to reconnect automatically")
+    else:
+        print(f"[WEBSOCKET ERROR] Unexpected error type: {error_type}")
+        import traceback
+        traceback.print_exc()
 
 
 def handle_socket_message(msg):
@@ -149,33 +168,124 @@ def handle_socket_message(msg):
         traceback.print_exc()
 
 
-def start_market_data_stream(client, symbol=None, interval=None):
+def start_market_data_stream(client, symbol=None, interval=None, max_retries=3):
+    """
+    Start market data websocket stream with improved error handling.
+    
+    Parameters
+    ----------
+    client : binance.client.Client
+        Binance client instance
+    symbol : str, optional
+        Trading symbol. If None, uses Config.symbol
+    interval : str, optional
+        Kline interval. If None, uses Config.interval
+    max_retries : int, default 3
+        Maximum number of connection retry attempts
+    
+    Returns
+    -------
+    ThreadedWebsocketManager
+        Websocket manager instance
+    
+    Raises
+    ------
+    ConnectionError
+        If websocket connection fails after all retries
+    """
     if symbol is None:
         symbol = Config.symbol
     if interval is None:
         config = Config()
         interval = config.interval
     
-    print(f"Starting market data stream for {symbol} @ {interval}")
+    print(f"[WEBSOCKET] Starting market data stream for {symbol} @ {interval}")
     
-    # Create websocket manager
-    twm = ThreadedWebsocketManager()
-    twm.start()
-    
-    # Give it a moment to initialize
     import time
-    time.sleep(1)
     
-    # Start kline stream
-    # Note: on_error parameter not supported in this version of python-binance
-    # Errors are handled within handle_socket_message() instead
-    twm.start_kline_socket(
-        callback=handle_socket_message,
-        symbol=symbol.lower(),
-        interval=interval
-    )
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Create websocket manager
+            twm = ThreadedWebsocketManager()
+            twm.start()
+            
+            # Give it a moment to initialize
+            time.sleep(1)
+            
+            # Start kline stream
+            print(f"[WEBSOCKET] Attempting to connect (attempt {attempt}/{max_retries})...")
+            twm.start_kline_socket(
+                callback=handle_socket_message,
+                symbol=symbol.lower(),
+                interval=interval
+            )
+            
+            # Give it a moment to establish connection
+            time.sleep(2)
+            
+            print(f"[WEBSOCKET] ✓ Successfully connected to Binance websocket")
+            return twm
+            
+        except ConnectionRefusedError as e:
+            error_msg = str(e)
+            print(f"[WEBSOCKET ERROR] Connection refused (attempt {attempt}/{max_retries})")
+            print(f"[WEBSOCKET ERROR] Details: {error_msg}")
+            
+            if attempt < max_retries:
+                wait_time = attempt * 2  # Exponential backoff: 2s, 4s, 6s
+                print(f"[WEBSOCKET] Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print(f"[WEBSOCKET ERROR] Failed to connect after {max_retries} attempts")
+                print(f"[WEBSOCKET ERROR] Possible causes:")
+                print(f"  - Network connectivity issues")
+                print(f"  - Firewall blocking port 9443 (Binance websocket)")
+                print(f"  - Binance API server temporarily unavailable")
+                print(f"  - IP restrictions on your Binance API key")
+                print(f"  - VPN/proxy configuration issues")
+                print(f"[WEBSOCKET ERROR] Troubleshooting:")
+                print(f"  1. Check your internet connection")
+                print(f"  2. Verify firewall allows outbound connections on port 9443")
+                print(f"  3. Check Binance API key IP whitelist settings")
+                print(f"  4. Try again in a few minutes (server may be temporarily down)")
+                raise ConnectionError(f"Failed to connect to Binance websocket after {max_retries} attempts: {error_msg}")
+        
+        except OSError as e:
+            error_msg = str(e)
+            errno = e.errno if hasattr(e, 'errno') else None
+            print(f"[WEBSOCKET ERROR] Network error (attempt {attempt}/{max_retries})")
+            print(f"[WEBSOCKET ERROR] Error code: {errno}, Details: {error_msg}")
+            
+            if attempt < max_retries:
+                wait_time = attempt * 2
+                print(f"[WEBSOCKET] Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print(f"[WEBSOCKET ERROR] Failed to connect after {max_retries} attempts")
+                print(f"[WEBSOCKET ERROR] This is a network connectivity issue.")
+                print(f"[WEBSOCKET ERROR] Please check your network connection and try again.")
+                raise ConnectionError(f"Network error connecting to Binance websocket: {error_msg}")
+        
+        except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+            print(f"[WEBSOCKET ERROR] Unexpected error: {error_type} (attempt {attempt}/{max_retries})")
+            print(f"[WEBSOCKET ERROR] Details: {error_msg}")
+            
+            if attempt < max_retries:
+                wait_time = attempt * 2
+                print(f"[WEBSOCKET] Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print(f"[WEBSOCKET ERROR] Failed to connect after {max_retries} attempts")
+                print(f"[WEBSOCKET ERROR] Error type: {error_type}")
+                import traceback
+                print(f"[WEBSOCKET ERROR] Full traceback:")
+                traceback.print_exc()
+                raise ConnectionError(f"Unexpected error connecting to Binance websocket: {error_msg}")
     
-    return twm
+    # Should never reach here, but just in case
+    raise ConnectionError("Failed to establish websocket connection")
 
 
 def get_next_candle():
